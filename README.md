@@ -1,45 +1,163 @@
-[![Mbed OS][mbed-os-logo]][mbed-os-link]
+# Minimal printf and snprintf
 
-[![Build status master][mbed-master-svg]][mbed-master]
-[![Tools coverage status][mbed-coveralls-tools-svg]][mbed-coveralls-tools]
 
-[mbed-os-logo]: logo.png
-[mbed-os-link]: https://www.mbed.com/en/platform/mbed-os/
-[mbed-master]: https://github.com/ARMmbed/mbed-os/actions/workflows/basic_checks.yml
-[mbed-master-svg]: https://github.com/ARMmbed/mbed-os/actions/workflows/basic_checks.yml/badge.svg
-[mbed-coveralls-tools]: https://coveralls.io/github/ARMmbed/mbed-os?branch=master
-[mbed-coveralls-tools-svg]: https://coveralls.io/repos/github/ARMmbed/mbed-os/badge.svg?branch=master
+Library supports both printf and snprintf in around 1300 bytes of flash.
 
-Arm Mbed OS is an open source embedded operating system designed specifically for the "things" in the Internet of Things. It includes all the features you need to develop a connected product based on an Arm Cortex-M microcontroller, including security, connectivity, an RTOS and drivers for sensors and I/O devices.
+Prints directly to stdio/UART without using malloc. Width size and prepending zero modifiers are supported. All other flags are ignored.
+There is no error handling if a writing error occurs.
 
-Mbed OS provides a platform that includes:
+Supports:
+* %d: signed integer [h, hh, (none), l, ll, z, j, t].
+* %i: signed integer [h, hh, (none), l, ll, z, j, t].
+* %u: unsigned integer [h, hh, (none), l, ll, z, j, t].
+* %x: unsigned integer [h, hh, (none), l, ll, z, j, t], printed as hexadecimal number (e.g., ff).
+* %X: unsigned integer [h, hh, (none), l, ll, z, j, t], printed as hexadecimal number (e.g., FF).
+* %f: floating point (disabled by default). Precision modifier is supported (e.g. %.5f).
+* %F: floating point (disabled by default, treated as %f). Precision modifier is supported (e.g. %.5F).
+* %g: floating point (disabled by default, treated as %f). Precision modifier is supported (e.g. %.5g).
+* %G: floating point (disabled by default, treated as %f). Precision modifier is supported (e.g. %.5G).
+* %c: character.
+* %s: string.
+* %p: pointer (e.g. 0x00123456).
 
-- Security foundations.
-- Cloud management services.
-- Drivers for sensors, I/O devices and connectivity.
+Note that support for:
+* 64b modifiers is only present when `minimal-printf-enable-64-bit` config is set to `true` (default).
+* Floating point parameters is only present when `minimal-printf-enable-floating-point` config is set to `true` (disabled by default).
 
-## Release notes
-The [release notes](https://os.mbed.com/releases) detail the current release. You can also find information about previous versions.
+Unrecognized format specifiers are treated as ordinary characters.
 
-## License and contributions
+Floating point limitations:
+* All floating points are treated as %f.
+* No support for inf, infinity or nan
 
-The software is provided under the [Apache-2.0 license](LICENSE-apache-2.0.txt). Contributions to this project are accepted under the same license. Please see [contributing.md](CONTRIBUTING.md) for more information.
+## Usage
 
-This project contains code from other projects. The original license text is included in those source files. They must comply with our [license guide](https://os.mbed.com/docs/mbed-os/latest/contributing/license.html).
+As of Mbed OS 6.0 this is enabled by default. To replace the standard implementation of the printf functions with the ones in this library for older versions of Mbed:
 
-Folders containing files under different permissive license than Apache 2.0 are listed in the [LICENSE](LICENSE.md) file.
+Modify your application configuration file to override the parameter `target.printf_lib` with the value `minimal-printf` as shown below:
 
-## Getting started for developers
+```json
+{
+    "target_overrides": {
+        "*": {
+            "target.printf_lib": "minimal-printf"
+        }
+    }
+}
+```
 
-We have a [developer website](https://os.mbed.com) for asking questions, engaging with others, finding information on boards and components, using an online IDE and compiler, reading the documentation and learning about what's new and what's coming next in Mbed OS.
+If your application requires more advanced functionality, you'll need to revert to using standard version of printf/snprintf. Please note that it will result in significant ROM usage increase. In case you are using minimal version of standard C library advanced functionality may not be present.
 
-## Getting started for contributors
+Modify your application configuration in `mbed_app.json` file to override the parameter `target.printf_lib` with the value `std` as shown below:
 
-We also have a [contributing and publishing guide](https://os.mbed.com/contributing/) that covers licensing, contributor agreements and style guidelines.
+```json
+    "target_overrides": {
+        "*": {
+            "target.printf_lib": "std"
+        }
+    }
+```
 
-## Documentation
+## Configuration
 
-For more information about Mbed OS, please see [our published documentation](https://os.mbed.com/docs/latest). It includes Doxygen for our APIs, step-by-step tutorials, porting information and background reference materials about our architecture and tools.
 
-To contribute to this documentation, please see the [mbed-os-5-docs repository](https://github.com/ARMmbed/mbed-os-5-docs).
+Minimal printf is configured by the following parameters defined in `platform/mbed_lib.json`:
 
+```json
+{
+    "name": "platform",
+    "config": {
+        "minimal-printf-enable-64-bit": {
+            "help": "Enable printing 64 bit integers when using minimal printf library",
+            "value": true
+        },
+        "minimal-printf-enable-floating-point": {
+            "help": "Enable floating point printing when using minimal printf library",
+            "value": false
+        },
+        "minimal-printf-set-floating-point-max-decimals": {
+            "help": "Maximum number of decimals to be printed when using minimal printf library",
+            "value": 6
+        }
+    }
+}
+```
+
+By default, 64 bit integers support is enabled, but floating point support is disabled to increase memory savings.
+
+If your application needs to override the default configuration add following section to your `mbed_app.json`:
+```json
+    "target_overrides": {
+        "*": {
+            "target.printf_lib": "minimal-printf",
+            "platform.minimal-printf-enable-floating-point": false,
+            "platform.minimal-printf-set-floating-point-max-decimals": 6,
+            "platform.minimal-printf-enable-64-bit": false
+        }
+    }
+```
+
+## Size comparison
+
+
+### Blinky application
+
+https://github.com/ARMmbed/mbed-os-example-blinky application compiled with the different toolchains.
+
+Blinky application size on K64F/GCC_ARM
+
+|             | Floating point | 64 bit integers | Flash  | RAM    |
+| -           | -              | -               | -      | -      |
+| mbed-printf |                |                 | 32,972 | 11,608 |
+| mbed-printf |                | X               | 33,116 | 11,608 |
+| mbed-printf | X              | X               | 35,856 | 11,608 |
+| std printf  | X              | X               | 55,766 | 12,104 |
+
+Blinky application size on K64F/ARMC6
+
+|             | Floating point | 64 bit integers | Flash  | RAM   |
+| -           | -              | -               | -      | -     |
+| mbed-printf |                |                 | 33,585 | xxxxx |
+| mbed-printf |                | X               | 33,679 | xxxxx |
+| mbed-printf | X              | X               | 36,525 | xxxxx |
+| std printf  | X              | X               | 39,128 | xxxxx |
+
+Blinky application size on K64F/IAR
+
+|             | Floating point | 64 bit integers | Flash  | RAM    |
+| -           | -              | -               | -      | -      |
+| mbed-printf |                |                 | 31,439 | 8,493  |
+| mbed-printf |                | X               | 31,579 | 8,493  |
+| mbed-printf | X              | X               | 33,387 | 8,493  |
+| std printf  | X              | X               | 36,643 | 8,553  |
+
+### Blinky bare metal application
+
+https://github.com/ARMmbed/mbed-os-example-blinky-baremetal application compiled with the different toolchains.
+
+Blinky application size on K64F/GCC_ARM
+
+|             | Floating point | 64 bit integers | Flash  | RAM   |
+| -           | -              | -               | -      | -     |
+| mbed-printf |                |                 | 19,660 | 5,368 |
+| mbed-printf |                | X               | 19,804 | 5,368 |
+| mbed-printf | X              | X               | 22,548 | 5,368 |
+| std printf  | X              | X               | 35,292 | 5,864 |
+
+Blinky application size on K64F/ARMC6
+
+|             | Floating point | 64 bit integers | Flash  | RAM   |
+| -           | -              | -               | -      | -     |
+| mbed-printf |                |                 | 18,764 | xxxxx |
+| mbed-printf |                | X               | 18,764 | xxxxx |
+| mbed-printf | X              | X               | 18,764 | xxxxx |
+| std printf  | X              | X               | 25,403 | xxxxx |
+
+Blinky application size on K64F/IAR
+
+|             | Floating point | 64 bit integers | Flash  | RAM    |
+| -           | -              | -               | -      | -      |
+| mbed-printf |                |                 | 19,623 | 1,737  |
+| mbed-printf |                | X               | 19,763 | 1,737  |
+| mbed-printf | X              | X               | 21,571 | 1,737  |
+| std printf  | X              | X               | 18,059 | 1,281  |
